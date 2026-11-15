@@ -600,15 +600,28 @@ class AbstractSpookRepair(AbstractSpookRepairBase):
 
         if self.inspect_config_entry_changed:
 
-            async def _async_config_entry_changed(  # pylint: disable=unused-argument
-                change: ConfigEntryChange,  # noqa: ARG001
+            async def _async_config_entry_changed(
+                change: ConfigEntryChange,
                 entry: ConfigEntry,
             ) -> None:
-                """Handle options update."""
+                """Handle config entry changes."""
                 if (
                     self.inspect_config_entry_changed is not True
                     and entry.domain != self.inspect_config_entry_changed
                 ):
+                    return
+                if (
+                    change is ConfigEntryChange.UPDATED
+                    and self.inspect_config_entry_changed is True
+                ):
+                    # An update to an entry cannot change what automations,
+                    # scripts or dashboards reference, and anything it does
+                    # to entities arrives through the registry listeners
+                    # instead. Integrations write these all day long, like
+                    # refreshing stored credentials, and every one of them
+                    # had every repair go through the whole house again.
+                    # Repairs scoped to a domain are exempt: the entry's own
+                    # data is what they inspect.
                     return
                 await self.inspect_debouncer.async_call()
 
