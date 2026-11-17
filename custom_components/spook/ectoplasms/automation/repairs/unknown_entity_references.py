@@ -356,6 +356,9 @@ class SpookRepair(AbstractSpookAutomationReferencesRepair):
 
     _known_entity_ids: set[str]
     _known_services: set[str]
+    # The service registry itself is not plain data — a service holds
+    # its schema — so this repair declares no computation context and
+    # its rounds stay in the thread executor, out of the worker process.
     _services: Mapping[str, Mapping[str, Service]]
 
     async def _async_setup_inspection(self) -> None:

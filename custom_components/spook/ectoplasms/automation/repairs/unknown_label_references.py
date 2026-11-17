@@ -38,6 +38,8 @@ class SpookRepair(AbstractSpookAutomationReferencesRepair):
     _known_label_ids: set[str]
     _template_lookup: TemplateLabelLookup
 
+    computation_context_attrs = ("_known_label_ids", "_template_lookup")
+
     async def _async_setup_inspection(self) -> None:
         """Cache known label IDs for this inspection cycle."""
         self._known_label_ids = async_get_all_label_ids(self.hass)

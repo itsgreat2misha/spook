@@ -36,6 +36,8 @@ class SpookRepair(AbstractSpookEntityComponentUnknownReferencesRepair):
     _known_area_ids: set[str]
     _template_lookup: TemplateAreaLookup
 
+    computation_context_attrs = ("_known_area_ids", "_template_lookup")
+
     async def _async_setup_inspection(self) -> None:
         """Cache known area IDs for this inspection cycle."""
         self._known_area_ids = async_get_all_area_ids(self.hass)

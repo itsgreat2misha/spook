@@ -40,6 +40,8 @@ class SpookRepair(AbstractSpookEntityComponentUnknownReferencesRepair):
 
     _known_user_ids: set[str]
 
+    computation_context_attrs = ("_known_user_ids",)
+
     async def _async_setup_inspection(self) -> None:
         """Cache the users there are for this inspection cycle."""
         self._known_user_ids = await async_get_user_ids(self.hass)

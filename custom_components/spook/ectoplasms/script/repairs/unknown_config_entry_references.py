@@ -48,6 +48,8 @@ class SpookRepair(AbstractSpookEntityComponentUnknownReferencesRepair):
     _config_entry_fields: ConfigEntryFields
     _entry_domains: dict[str, str]
 
+    computation_context_attrs = ("_config_entry_fields", "_entry_domains")
+
     def _format_references(self, references: list[str]) -> str:
         """Return the list of config entries, saying which are of another one."""
         return format_config_entry_references(self.hass, references)

@@ -77,6 +77,7 @@ from .helper_sources import (
     async_unknown_helper_sources,
     async_unknown_min_max_members,
 )
+from .process_executor import async_run_round
 from .reference_extraction import (
     AttributeValue,
     CoreReferenceKind,
@@ -702,6 +703,41 @@ class InspectedEntity:
         return set(self.referenced)
 
 
+@dataclass(frozen=True, slots=True)
+class RoundJob:
+    """One round of computation, as it crosses to the worker process.
+
+    Everything the computation needs, as plain data: which repair is
+    asking (its dotted path, so the worker can rebuild it), the state
+    its inspection setup cached for the round, by name, and the round's
+    entities, snapshotted the same way as for the thread executor.
+    Nothing here can reach back into Home Assistant, which is what
+    makes the computation safe to run in another process.
+    """
+
+    repair_path: str
+    context: dict[str, Any]
+    entities: list[InspectedEntity]
+
+
+def _run_round_job(job: RoundJob) -> list[set[str]]:
+    """Run one round of computation. The worker process's entry point.
+
+    Rebuilds the repair that asked as a bare instance holding only the
+    state its inspection setup cached, and runs the round on it. The
+    worker imports nothing but Spook itself; it never sees Home
+    Assistant.
+    """
+    module_name, _, class_name = job.repair_path.rpartition(".")
+    repair_class = getattr(importlib.import_module(module_name), class_name)
+    repair = repair_class.__new__(repair_class)
+    for name, value in job.context.items():
+        setattr(repair, name, value)
+    # The round's own machinery, called on the repair this module rebuilt.
+    # pylint: disable-next=protected-access
+    return repair._compute_unknown_references_for_all(job.entities)  # noqa: SLF001
+
+
 class AbstractSpookEntityComponentUnknownReferencesRepair(AbstractSpookRepair, ABC):
     """Base class for repairs that find unknown references in component entities.
 
@@ -744,6 +780,16 @@ class AbstractSpookEntityComponentUnknownReferencesRepair(AbstractSpookRepair, A
     #: of them for every entity would put that walk back on the event loop.
     #: ``None`` reads none of them.
     core_reference_kind: CoreReferenceKind | None = None
+
+    #: The state ``_async_setup_inspection`` caches on ``self`` that the
+    #: computation reads, by name. A repair declares it only once that
+    #: state has been checked to be plain data — sets, dicts, strings,
+    #: frozen dataclasses of the same — because a declared repair has its
+    #: rounds computed in the worker process (see `process_executor`),
+    #: and only plain data can cross to it. ``None``, the default, keeps
+    #: the thread executor: the repair's state has not been checked, or
+    #: is not plain.
+    computation_context_attrs: tuple[str, ...] | None = None
 
     def _format_references(self, references: list[str]) -> str:
         """Return the bulleted reference list for the issue message."""
@@ -868,6 +914,44 @@ class AbstractSpookEntityComponentUnknownReferencesRepair(AbstractSpookRepair, A
         """
         return [self._compute_unknown_references(entity) for entity in entities]
 
+    async def _async_compute_round(
+        self, snapshots: list[InspectedEntity]
+    ) -> list[set[str]]:
+        """Return a round's unknown references, computed off the event loop.
+
+        A repair whose cached state is plain data (it declares
+        `computation_context_attrs`) has the round computed in the
+        worker process, under another interpreter on another core,
+        where its cost cannot contend with the event loop at all. If
+        that fails for any reason, the round is computed in the thread
+        executor instead, exactly as a repair that declares nothing.
+        """
+        if self.computation_context_attrs is not None:
+            try:
+                context = {
+                    name: getattr(self, name) for name in self.computation_context_attrs
+                }
+            except AttributeError:
+                context = None
+            if context is not None:
+                unknowns = await async_run_round(
+                    self.hass,
+                    _run_round_job,
+                    RoundJob(
+                        repair_path=(
+                            f"{type(self).__module__}.{type(self).__qualname__}"
+                        ),
+                        context=context,
+                        entities=snapshots,
+                    ),
+                )
+                if unknowns is not None:
+                    return unknowns
+
+        return await self.hass.async_add_executor_job(
+            self._compute_unknown_references_for_all, snapshots
+        )
+
     def _is_inspected_entity(self, entity: Any) -> bool:
         """Return whether this round inspects the entity at all."""
         unavailable_class = self.unavailable_entity_class
@@ -899,9 +983,7 @@ class AbstractSpookEntityComponentUnknownReferencesRepair(AbstractSpookRepair, A
                     await asyncio.sleep(0)
                 snapshots.append(self._snapshot_entity(entity))
 
-            unknowns = await self.hass.async_add_executor_job(
-                self._compute_unknown_references_for_all, snapshots
-            )
+            unknowns = await self._async_compute_round(snapshots)
             return [
                 (entity, sorted(unknown))
                 for entity, unknown in zip(inspected, unknowns, strict=True)

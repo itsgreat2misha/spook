@@ -45,6 +45,8 @@ class SpookRepair(AbstractSpookAutomationReferencesRepair):
     _known_services: set[str]
     _disabled_integrations: set[str]
 
+    computation_context_attrs = ("_known_services", "_disabled_integrations")
+
     async def _async_setup_inspection(self) -> None:
         """Cache known services for this inspection cycle."""
         self._known_services = async_get_all_services(self.hass)

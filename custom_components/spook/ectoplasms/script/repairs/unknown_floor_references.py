@@ -41,6 +41,8 @@ class SpookRepair(AbstractSpookEntityComponentUnknownReferencesRepair):
     _known_floor_ids: set[str]
     _template_lookup: TemplateFloorLookup
 
+    computation_context_attrs = ("_known_floor_ids", "_template_lookup")
+
     async def _async_setup_inspection(self) -> None:
         """Cache known floor IDs for this inspection cycle."""
         self._known_floor_ids = async_get_all_floor_ids(self.hass)

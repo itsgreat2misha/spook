@@ -37,6 +37,8 @@ class SpookRepair(AbstractSpookEntityComponentUnknownReferencesRepair):
 
     _known_device_ids: set[str]
 
+    computation_context_attrs = ("_known_device_ids",)
+
     async def _async_setup_inspection(self) -> None:
         """Cache known device IDs for this inspection cycle."""
         self._known_device_ids = async_get_all_device_ids(self.hass)

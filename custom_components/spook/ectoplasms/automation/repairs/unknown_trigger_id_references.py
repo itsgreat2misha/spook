@@ -41,6 +41,11 @@ class SpookRepair(AbstractSpookAutomationReferencesRepair):
     reference_label = "trigger_ids"
     edit_url_pattern = "/config/automation/edit/{unique_id}"
 
+    # The computation reads nothing but the snapshot, so there is no
+    # state to declare: an empty context still crosses to the worker
+    # process.
+    computation_context_attrs = ()
+
     def _compute_unknown_references(self, entity: InspectedEntity) -> set[str]:
         """Return the trigger IDs ``entity`` checks for that it never has."""
         if not (raw_config := entity.raw_config):
